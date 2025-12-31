@@ -39,6 +39,6 @@ for pin in ledpins:
 
 while True:
  for pin in ledpins:
-  GPIO.outpt(pin, GPIO.HIGH)
+  GPIO.output(pin, GPIO.HIGH)
   time.sleep(1)
-  GPIO.outpt(pin, GPIO.LOW)
+  GPIO.output(pin, GPIO.LOW)
