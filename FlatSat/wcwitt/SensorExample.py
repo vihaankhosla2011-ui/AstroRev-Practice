@@ -50,31 +50,39 @@ OBS_LED = True
 
 GPIO.setmode ( GPIO.BCM )  # can't use BOARD mode; BCM forced by other library (?)
 
+class LedInstance(Enum) :
+  ROT_NOW      = 0
+  ROT_CUMU     = 1
+  ACC_NOW      = 2
+  VEL_CUMUL    = 3
+  STATE_READY  = 4
+  STATE_ACTION = 5
+
 # Assign observability LEDs to pins using GPIO pin numbers...
-ledRotNow   =  6  # header pin 31
-ledRotCumul = 13  # header pin 33
-ledAccNow   = 19  # header pin 35
-ledVelCumul = 26  # header pin 37
-ledReady    = 20  # header pin 38
-ledAction   = 21  # header pin 40
+led_pin [ LedInstance.ROT_NOW      ] =  6  # header pin 31
+led_pin [ LedInstance.ROT_CUMUL    ] = 13  # header pin 33
+led_pin [ LedInstance.ACC_NOW      ] = 19  # header pin 35
+led_pin [ LedInstance.VEL_CUMUL    ] = 26  # header pin 37
+led_pin [ LedInstance.STATE_READY  ] = 20  # header pin 38
+led_in  [ LedInstance.STATE_ACTION ] = 21  # header pin 40
 
 # Set up all LED pins as outputs...
-GPIO.setup ( ledRotNow,   GPIO.OUT )
-GPIO.setup ( ledRotCumul, GPIO.OUT )
-GPIO.setup ( ledAccNow,   GPIO.OUT )
-GPIO.setup ( ledVelCumul, GPIO.OUT )
-GPIO.setup ( ledReady,    GPIO.OUT )
-GPIO.setup ( ledAction,   GPIO.OUT )
+for led_index in LedInstance :
+  GPIO.setup ( led_pin[led_index.value], GPIO.OUT )
+
+class ButtonInstance(Enum) :
+  RESET        = 0
+  FORCE_CALIB  = 1
+  FORCE_ACTION = 2
 
 # Assign input buttons to pins using GPIO pin numbers...
-buttonReset       = 18  # header pin 12
-buttonForceCalib  = 23  # header pin 16
-buttonForceAction = 24  # header pin 18
+button_pin [ ButtonInstance.RESET        ] = 18  # header pin 12
+button_pin [ ButtonInstance.FORCE_CALIB  ] = 23  # header pin 16
+button_pin [ ButtonInstance.FORCE_ACTION ] = 24  # header pin 18
 
 # Set up button pins as inputs with pull-up resistor...
-GPIO.setup ( buttonReset,       GPIO.IN, GPIO.PUD_UP )
-GPIO.setup ( buttonForceCalib,  GPIO.IN, GPIO.PUD_UP )
-GPIO.setup ( buttonForceAction, GPIO.IN, GPIO.PUD_UP )
+for button_index in ButtonInstance :
+  GPIO.setup ( button_pin[button.value], GPIO.IN, GPIO.PUD_UP )
 
 # Connect Devices
 # ---------------
@@ -154,24 +162,24 @@ def handleAction () :
   pendingAction = True
 
 # Attach event handlers to input buttons...
-#GPIO.add_event_detect( buttonReset,       GPIO.FALLING, handleReset,  SWITCH_DEBOUNCE_TIME )
-#GPIO.add_event_detect( buttonForceCalib,  GPIO.FALLING, handleCalib,  SWITCH_DEBOUNCE_TIME )
-#GPIO.add_event_detect( buttonForceAction, GPIO.FALLING, handleAction, SWITCH_DEBOUNCE_TIME )
+#GPIO.add_event_detect( button_pin [ RESET       ], GPIO.FALLING, handleReset,  SWITCH_DEBOUNCE_TIME )
+#GPIO.add_event_detect( button_pin [ FORCE_CALIB ], GPIO.FALLING, handleCalib,  SWITCH_DEBOUNCE_TIME )
+#GPIO.add_event_detect( button_pin [ FORCE_ACTION], GPIO.FALLING, handleAction, SWITCH_DEBOUNCE_TIME )
 # FIXME: Need to debug "Failed to add edge detection" error.
 
 # Allocate Numpy Matrices
 # -----------------------
 
-np_g_calib = np.zeros( (3,1) )
+np_acc_filtered = np.zeros ( (3,1) )
+np_gyr_filtered = np.zeros ( (3,1) )
 
 np_rot_cumul = np.zeros( (3,1) )
 np_vel_cumul = np.zeros( (3,1) )
 
-np_acc_filtered = np.zeros ( (3,1) )
-np_gyr_filtered = np.zeros ( (3,1) )
-
 np_rot_cumul_cos = np.zeros ( (3,1) )
 np_rot_cumul_sin = np.zeros ( (3,1) )
+
+np_g_calib = np.zeros( (3,1) )
 
 # Initialize Loop Variables
 # -------------------------
@@ -375,7 +383,9 @@ try :
     # Observability via print statements...
     if OBS_PRINT_ANY and ( time_current - time_last_print >= OBS_PRINT_INTERVAL or \
        OBS_PRINT_STATE_CHANGE and control_state_next != control_state_current ) :
+
       print_count += 1
+
       if OBS_PRINT_STATE or OBS_PRINT_STATE_CHANGE and control_state_next != control_state_current :
         print ( "Status:" )
         print ( "- Control state        : ", end="" )
@@ -383,13 +393,16 @@ try :
           print ( "%s"  % control_state_current.name )
         else:
           print ( "%s -> %s"  % (control_state_current.name,control_state_next.name) )
+
       if OBS_PRINT_STATE :
         print ( "- Observability print  : %5d"       % print_count  )
         print ( "- Total sensor samples : %5d (+%d)" % (sample_count_total,sample_count_since_print) )
+
       if OBS_PRINT_RAW :
         print ( "Raw sensor out:" )
         print ( "- Accelerometer: X:%+8.4f,  Y: %+8.4f,  Z: %+8.4f  m/s^2"    % acc_value_samples )
         print ( "- Gyroscope    : X:%+8.4f,  Y: %+8.4f,  Z: %+8.4f  radian/s" % gyr_value_samples )
+
       if OBS_PRINT_INST :
         print ( "Instantaneous rotation rate:" )
         print ( "- Filtered     : X:%+8.4f,  Y: %+8.4f,  Z: %+8.4f  radian/s" % tuple(np_gyr_filtered.ravel())  )
@@ -398,6 +411,7 @@ try :
         print ( "- Filtered     : X:%+8.4f,  Y: %+8.4f,  Z: %+8.4f  m/s^2"     % tuple(np_acc_filtered.ravel())  )
         print ( "- Magnitude    :   %+8.4f"                                    % np.linalg.norm(np_acc_filtered) )
         print ( "- Is only g    : %s"                                          % acc_is_only_g(np_acc_filtered)  )
+
       if OBS_PRINT_CUMUL :
         print ( "Sensor derived:" )
         print ( "- Rotation:" )
@@ -409,24 +423,24 @@ try :
         print ( "  - Velocity delta      : X:%+8.4f,  Y: %+8.4f,  Z: %+8.4f  m/s"    % tuple(np_vel_delta.ravel())  )
         print ( "  - Velocity cumulative : X:%+8.4f,  Y: %+8.4f,  Z: %+8.4f  m/s"    % tuple(np_vel_cumul.ravel())  )
         print ( "  - Velocity is zero    : %s" % vel_is_zero(np_vel_cumul) )
+
       print ( "" )
       time_last_print = time_current
       sample_count_since_print = 0
 
     # Observability via LEDs...
     if OBS_LED :
-      GPIO.output ( ledRotNow,     GPIO.LOW if rot_is_zero(np_gyr_filtered)   else GPIO.HIGH )
-      GPIO.output ( ledRotCumul,   GPIO.LOW if rot_is_zero(np_rot_cumul)      else GPIO.HIGH )
-      GPIO.output ( ledAccNow,     GPIO.LOW if acc_is_only_g(np_acc_filtered) else GPIO.HIGH )
-      GPIO.output ( ledVelCumul,   GPIO.LOW if vel_is_zero(np_vel_cumul)      else GPIO.HIGH )
-      if control_state_current == ControlState.READY :
-        GPIO.output ( ledReady, GPIO.HIGH )
-      else :
-        GPIO.output ( ledReady, GPIO.LOW  )
-      if control_state_current == ControlState.ACTION or control_state_current == ControlState.PAUSE :
-        GPIO.output ( ledAction, GPIO.HIGH )
-      else :
-        GPIO.output ( ledAction, GPIO.LOW  )
+
+      led_on [ ROT_NOW   ] = not rot_is_zero(np_gyr_filtered)
+      led_on [ ROT_CUMUL ] = not rot_is_zero(np_rot_cumul)
+      led_on [ ACC_NOW   ] = not acc_is_only_g(np_acc_filtered)
+      led_on [ VEL_CUMUL ] = not vel_is_zero(np_vel_cumul)
+
+      led_on [ STATE_READY  ] = control_state_current == ControlState.READY
+      led_on [ STATE_ACTION ] = control_state_current == ControlState.ACTION or control_state_current == ControlState.PAUSE
+
+      for led_index in LedInstance :
+        GPIO.output ( led_pin[led_index.value], GPIO.HIGH if led_on[led_index.value] else GPIO.LOW )
 
     # --- Prepare For Next Loop Iteration ---
 
@@ -441,13 +455,8 @@ except KeyboardInterrupt:
   pass  # just continue on with finally block
 
 finally:
-  GPIO.output ( ledRotNow,   GPIO.LOW )
-  GPIO.output ( ledRotCumul, GPIO.LOW )
-  GPIO.output ( ledAccNow,   GPIO.LOW )
-  GPIO.output ( ledVelCumul, GPIO.LOW )
-  GPIO.output ( ledReady,    GPIO.LOW )
-  GPIO.output ( ledAction,   GPIO.LOW )
-  GPIO.cleanup()
+  for led in LedInstance :
+    GPIO.output ( led_pin[led.value], GPIO.LOW )
   print ( "" )
   print ( "Final Info" )
   print ( "----------" )
